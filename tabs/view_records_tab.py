@@ -4,14 +4,19 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 # count_stores_in_route is not used for this specific change
-from utils import filter_trips
+from utils import filter_trips,load_vehicle_plates_from_gsheets
 from config import VEHICLE_OPTIONS
 
 
 def display_view_records_tab():
     """Displays the UI and handles logic for the View Records tab."""
     st.header("KM Records")
+    vehicle_details = pd.DataFrame(load_vehicle_plates_from_gsheets())
+    vehicle_details= vehicle_details.drop('Comments', axis=1)
+    st.header("Vehicle Details")
+    st.dataframe(vehicle_details, hide_index=True, use_container_width=True)
 
+    st.markdown
     # --- Filters ---
     st.subheader("Filter Records")
     col_date1, col_date2 = st.columns(2)

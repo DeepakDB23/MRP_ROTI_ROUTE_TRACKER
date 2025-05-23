@@ -155,6 +155,7 @@ def load_vehicle_plates_from_gsheets():
         st.session_state.df_vehicles = pd.DataFrame(vehicle_plates_list)
         st.success(
             f"Vehicle plate data loaded from '{GSHEETS_VEHICLES_WORKSHEET_NAME}' sheet.")
+        return vehicle_plates_list
     except Exception as e:
         st.error(
             f"Error loading data from '{GSHEETS_VEHICLES_WORKSHEET_NAME}' sheet: {e}")
