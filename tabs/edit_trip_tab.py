@@ -1,21 +1,25 @@
-# tabs/edit_trip_tab.py
-
 import streamlit as st
 import pandas as pd  # Import pandas
 from datetime import datetime
 # Import necessary functions
 from utils import get_drivers_list, update_trip, delete_trip
-from config import VEHICLE_OPTIONS, STORE_REGION_MAPPING  # Import from config
+from config import VEHICLE_OPTIONS, STORE_REGION_MAPPING
 
 
 def display_edit_trip_tab():
     """Displays the UI and handles logic for the Edit Existing Trip tab."""
     st.header("Edit Existing Trip")
 
+    # Sort trips by date in descending order (latest first)
+    sorted_trips = sorted(st.session_state.trips,
+                          key=lambda x: datetime.strptime(
+                              x['Date'], '%Y-%m-%d'),
+                          reverse=True)
+
     # Create a list of options for the selectbox
     edit_options = ["-- Select a Trip --"] + [
         f"{trip['Date']} - {trip['Vehicle']} - {trip['Start KM']} to {trip['End KM']}"
-        for trip in st.session_state.trips
+        for trip in sorted_trips
     ]
     # Use a unique key for the selectbox
     selected_trip_display = st.selectbox(
@@ -25,7 +29,7 @@ def display_edit_trip_tab():
     selected_trip = None
     if selected_trip_display != "-- Select a Trip --":
         # Find the trip based on the display string (this assumes display strings are unique enough)
-        for trip in st.session_state.trips:
+        for trip in sorted_trips:
             if f"{trip['Date']} - {trip['Vehicle']} - {trip['Start KM']} to {trip['End KM']}" == selected_trip_display:
                 selected_trip = trip
                 break  # Found the latest trip for this vehicle
@@ -123,13 +127,14 @@ def display_edit_trip_tab():
                 save_button = st.form_submit_button("Save Changes")
             with col2:
                 # Streamlit forms require a submit button, so we'll use a regular button outside the form for delete
-                pass  # Delete button is handled outside the form below
+                delete_button = st.button(
+                    "Delete Trip", key=f"delete_btn_{selected_trip['id']}")
 
         if save_button:
             # --- Safely read and cast KM values from input widgets ---
             try:
-                 start_km_value = int(edit_start_km_input)
-                 end_km_value = int(edit_end_km_input)
+                start_km_value = int(edit_start_km_input)
+                end_km_value = int(edit_end_km_input)
             except (ValueError, TypeError):
                 st.error("Please enter valid numbers for Start KM and End KM.")
                 st.stop()  # Stop execution if KM values are invalid
@@ -145,24 +150,25 @@ def display_edit_trip_tab():
                     del st.session_state[f'confirm_delete_{edit_trip_id}']
                 st.rerun()  # Rerun to update the display and reset form
             else:
-                 st.error(
-                     "Please fill in all required fields (Vehicle, Driver Name, and select at least one Store for Route).")
+                st.error(
+                    "Please fill in all required fields (Vehicle, Driver Name, and select at least one Store for Route).")
 
         # Delete button outside the form
         # Use a unique key for the delete button based on the selected trip ID
         # Check if the confirmation state exists and is True for THIS trip
         confirm_state_key = f'confirm_delete_{selected_trip["id"]}'
-        if st.button("Delete Trip", key=f"delete_btn_{selected_trip['id']}"):
+        if delete_button:
             if st.session_state.get(confirm_state_key, False):
                 # delete_trip now handles saving to GSheets internally
                 delete_trip(edit_trip_id)
                 if confirm_state_key in st.session_state:
-                    del st.session_state[confirm_state_key]  # Reset confirmation
+                    # Reset confirmation
+                    del st.session_state[confirm_state_key]
                 st.rerun()  # Rerun to update the selectbox
             else:
                 st.warning("Click 'Delete Trip' again to confirm.")
                 st.session_state[confirm_state_key] = True  # Set confirmation
-                 # Need to rerun to show the warning message immediately
+                # Need to rerun to show the warning message immediately
                 st.rerun()
 
     else:

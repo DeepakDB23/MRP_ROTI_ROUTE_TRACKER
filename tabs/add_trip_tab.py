@@ -1,7 +1,7 @@
 # tabs/add_trip_tab.py
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta  # Added timedelta
 from utils import get_drivers_list, add_trip
 from config import VEHICLE_OPTIONS, STORE_REGION_MAPPING
 import time
@@ -57,16 +57,20 @@ def get_latest_end_km(vehicle):
 def display_add_trip_tab():
     """Displays the UI and handles logic for the Add New Trip tab."""
 
-    # --- NEW: Reset vehicle select if trip was added ---
+    # --- Reset vehicle select and bypass flag if trip was added ---
     if 'trip_added' in st.session_state and st.session_state.trip_added:
         st.session_state.add_trip_vehicle_select = ""
         st.session_state.trip_added = False
+        # Clean up any bypass flags related to previous attempts
+        for key in list(st.session_state.keys()):
+            if key.startswith('bypass_warning_'):
+                del st.session_state[key]
     # --------------------------------------------------
 
     st.header("Add New Trip")
-    st.warning("⚠️ Please ensure the dates are correct while filling the sheet")
-    st.warning(
-        "🔴 Always cross check the start kms matches the previous trip of the corresponding Vehicle type")
+    #st.warning("⚠️ Please ensure the dates are correct while filling the sheet")
+    #st.warning(
+        #"🔴 Always cross check the start kms matches the previous trip of the corresponding Vehicle type")
 
     drivers = get_drivers_list()
     store_mapping = STORE_REGION_MAPPING
@@ -167,7 +171,34 @@ def display_add_trip_tab():
                 error_messages.append(
                     "Please select at least one Store for the Route.")
 
-            final_latest_end_km = 0
+            # --- NEW: Previous Day Check ---
+            previous_day_not_filled_warning_triggered = False
+            bypass_flag_key = f'bypass_warning_{final_selected_vehicle}_{add_date.strftime("%Y%m%d")}'
+
+            if final_selected_vehicle and final_selected_vehicle != "":
+                previous_day_date_obj = add_date - timedelta(days=1)
+                previous_day_str = previous_day_date_obj.strftime('%Y-%m-%d')
+                found_previous_day_trip = False
+                if 'trips' in st.session_state and st.session_state.trips:
+                    for trip_item in st.session_state.trips:
+                        if trip_item.get("Vehicle") == final_selected_vehicle and \
+                           trip_item.get("Date") == previous_day_str:
+                            found_previous_day_trip = True
+                            break
+                if not found_previous_day_trip:
+                    previous_day_not_filled_warning_triggered = True
+
+            if previous_day_not_filled_warning_triggered and not st.session_state.get(bypass_flag_key, False):
+                st.warning(
+                    f"Previous day ({previous_day_date_obj.strftime('%Y-%m-%d')}) has not been filled for Vehicle {final_selected_vehicle}. "
+                    "Ensure the date is correct. Click 'Add Trip' again to bypass this warning and submit."
+                )
+                # Set flag to bypass on next click
+                st.session_state[bypass_flag_key] = True
+                st.stop()  # Stop current submission, user needs to click again
+            # --- END NEW: Previous Day Check ---
+
+            final_latest_end_km = 0  # Recalculate for current vehicle just in case
             if final_selected_vehicle and final_selected_vehicle != "":
                 final_latest_end_km = get_latest_end_km(final_selected_vehicle)
 
@@ -178,10 +209,15 @@ def display_add_trip_tab():
             if error_messages:
                 for msg in error_messages:
                     st.error(msg)
+                # If other errors occurred AFTER the bypass flag was set for previous day warning,
+                # we might want to unset it to force re-acknowledgment if those other errors are fixed.
+                # However, for simplicity, we'll let it persist as the user already acknowledged it once.
             else:
                 if add_trip(add_date, final_selected_vehicle, start_km_value, end_km_value, final_selected_driver, add_route_list, add_remarks):
-                    # --- NEW: Set flag instead of modifying session_state directly ---
-                    st.session_state.trip_added = True
+                    st.session_state.trip_added = True  # This will trigger cleanup at the top
+                    # Explicitly clean the specific bypass flag that was used for this successful submission
+                    if bypass_flag_key in st.session_state:
+                        del st.session_state[bypass_flag_key]
                     st.success("Trip added successfully! ✅")
-                    time.sleep(5)
+                    time.sleep(1)  # Reduced sleep time
                     st.rerun()
